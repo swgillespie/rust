@@ -67,6 +67,10 @@ pub struct LoweringContext<'a> {
     // a definition, then we can properly create the def id.
     parent_def: Option<DefIndex>,
     resolver: &'a mut Resolver,
+    // As we walk the AST we need to keep track if a loop issued an expression break.
+    loop_expanded_named_break: bool,
+    // The name that the loop desugar will assign to
+    loop_expanded_named_gensym: Option<(Name, NodeId)>
 }
 
 pub trait Resolver {
@@ -119,16 +123,28 @@ pub fn lower_crate(sess: &Session,
         id_assigner: id_assigner,
         parent_def: None,
         resolver: resolver,
+        loop_expanded_named_break: false,
+        loop_expanded_named_gensym: None
     }.lower_crate(krate)
 }
 
 impl<'a> LoweringContext<'a> {
+    pub fn needs_loop_expression_break_desugar(&self) -> bool {
+        self.loop_expanded_named_break
+    }
+    
+    pub fn mark_loop_for_desugar(&mut self) {
+        self.loop_expanded_named_break = true;
+    }
+    
     pub fn testing_context(id_assigner: &'a NodeIdAssigner, resolver: &'a mut Resolver) -> Self {
         LoweringContext {
             crate_root: None,
             id_assigner: id_assigner,
             parent_def: None,
             resolver: resolver,
+            loop_expanded_named_break: false,
+            loop_expanded_named_gensym: None
         }
     }
 
@@ -1132,7 +1148,62 @@ impl<'a> LoweringContext<'a> {
                                    self.lower_opt_sp_ident(opt_ident))
                 }
                 ExprKind::Loop(ref body, opt_ident) => {
-                    hir::ExprLoop(self.lower_block(body), self.lower_opt_sp_ident(opt_ident))
+                    // we need to desugar this loop if it contains an expression break.
+                    // we may not need to do this desugar, if no expression breaks are used.
+                    // so, we'll create an identifier in preparation for this desugar, but
+                    // we'll throw it away if we don't need it.
+                    
+                    let local = token::gensym("_expr_break");
+                    let (let_stmt, let_stmt_binding) = {
+                        let none = {
+                            let strs = self.std_path(&["option", "Option", "None"]);
+                            let path = self.path_global(e.span, strs);
+                            self.expr_path(path, None)
+                        };
+                        
+                        self.stmt_let(e.span, true, local, none, None)
+                    };
+                    
+                    self.loop_expanded_named_gensym = Some((local, let_stmt_binding));
+                    
+                    let lowered_body = self.lower_block(body);
+                    let lowered_sp_ident = self.lower_opt_sp_ident(opt_ident);
+                    if self.needs_loop_expression_break_desugar() {
+                        // let's do it.
+                        // we will desugar
+                        //  let x = loop {
+                        //     ...
+                        //     break 42;
+                        //  };
+                        // to
+                        //  let x = {
+                        //    let mut <gensym_expr_break> = None;
+                        //    loop {
+                        //      ...
+                        //      <gensym_expr_break> = 42;
+                        //      break;
+                        //    }
+                        //    <gensym_expr_break>  
+                        //  };
+                        
+                        let lowered_loop = {
+                            let loop_expr = P(hir::Expr {
+                                id: self.next_id(),
+                                node: hir::ExprLoop(lowered_body, lowered_sp_ident),
+                                span: e.span,
+                                attrs: e.attrs.clone()
+                            });
+                            Spanned {
+                                node: hir::StmtSemi(loop_expr, self.next_id()),
+                                span: e.span
+                            }
+                        };
+                        let result_expr = self.expr_ident(e.span, local, None, let_stmt_binding);
+                        let block = self.block_all(e.span, hir_vec![let_stmt, lowered_loop], Some(result_expr));
+                        return self.expr_block(block, e.attrs.clone());
+                    }
+                               
+                    hir::ExprLoop(lowered_body, lowered_sp_ident)
                 }
                 ExprKind::Match(ref expr, ref arms) => {
                     hir::ExprMatch(self.lower_expr(expr),
@@ -1249,7 +1320,48 @@ impl<'a> LoweringContext<'a> {
                     };
                     hir::ExprPath(hir_qself, self.lower_path_full(path, rename))
                 }
-                ExprKind::Break(opt_ident) => hir::ExprBreak(self.lower_opt_sp_ident(opt_ident)),
+                ExprKind::Break(opt_ident, None) => hir::ExprBreak(self.lower_opt_sp_ident(opt_ident)),
+                ExprKind::Break(None, Some(ref expr)) => {
+                    // this is a break-with-return that will need desugaring of the whole loop.
+                    // at this point, we should have lowered the loop to something like this:
+                    //   let value = {
+                    //      let <gensym> = None;
+                    //      loop {
+                    //         ...
+                    //         break <expr>;
+                    //      }
+                    //   };
+                    // 
+                    let (name, id) = self.loop_expanded_named_gensym.unwrap();
+                    let assign_target = self.expr_ident(e.span, name, None, id);
+                    let assign_expr = self.lower_expr(expr);
+                    let assign = {
+                        let expr = P(hir::Expr {
+                            id: self.next_id(),
+                            node: hir::ExprAssign(assign_target, assign_expr),
+                            span: e.span,
+                            attrs: e.attrs.clone()
+                        });
+                        
+                        Spanned {
+                            node: hir::StmtSemi(expr, self.next_id()),
+                            span: e.span
+                        }
+                    };
+                    
+                    let actual_break = P(hir::Expr {
+                        id: self.next_id(),
+                        node: hir::ExprBreak(None),
+                        span: e.span,
+                        attrs: e.attrs.clone()
+                    });
+                    
+                    let block = self.block_all(e.span, hir_vec![assign], Some(actual_break));
+                    return self.expr_block(block, e.attrs.clone());
+                },
+                ExprKind::Break(_, _) => {
+                    panic!("invalid break");
+                }
                 ExprKind::Again(opt_ident) => hir::ExprAgain(self.lower_opt_sp_ident(opt_ident)),
                 ExprKind::Ret(ref e) => hir::ExprRet(e.as_ref().map(|x| self.lower_expr(x))),
                 ExprKind::InlineAsm(InlineAsm {

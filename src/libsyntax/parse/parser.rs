@@ -2316,13 +2316,35 @@ impl<'a> Parser<'a> {
                     }
                 } else if self.eat_keyword(keywords::Break) {
                     if self.token.is_lifetime() {
-                        ex = ExprKind::Break(Some(Spanned {
+                        let lifetime = Some(Spanned {
                             node: self.get_lifetime(),
                             span: self.span
-                        }));
+                        });
                         self.bump();
+                        
+                        // from here, we may possibly be looking
+                        // at the start of an expression, like this:
+                        //   break 'a, 42;
+                        let yield_expr = if self.token.can_begin_expr() {
+                            println!("beginning an expression after break");
+                            Some(self.parse_expr()?)
+                        } else {
+                            None
+                        };
+                        
+                        ex = ExprKind::Break(lifetime, yield_expr);
                     } else {
-                        ex = ExprKind::Break(None);
+                        // a break with no lifetime can still have an expression attached
+                        // to it:
+                        //    break 42;
+                        let yield_expr = if self.token.can_begin_expr() {
+                            println!("beginning an expression after break, no lifetime");
+                            Some(self.parse_expr()?)
+                        } else {
+                            None
+                        };
+                        
+                        ex = ExprKind::Break(None, yield_expr);
                     }
                     hi = self.last_span.hi;
                 } else if self.token.is_keyword(keywords::Let) {

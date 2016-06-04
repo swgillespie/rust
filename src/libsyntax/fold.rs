@@ -1251,9 +1251,11 @@ pub fn noop_fold_expr<T: Folder>(Expr {id, node, span, attrs}: Expr, folder: &mu
                 });
                 ExprKind::Path(qself, folder.fold_path(path))
             }
-            ExprKind::Break(opt_ident) => ExprKind::Break(opt_ident.map(|label|
-                respan(folder.new_span(label.span),
-                       folder.fold_ident(label.node)))
+            ExprKind::Break(opt_ident, opt_expr) => ExprKind::Break(
+                opt_ident.map(|label|
+                    respan(folder.new_span(label.span),
+                           folder.fold_ident(label.node))),
+                opt_expr.map(|x| folder.fold_expr(x))
             ),
             ExprKind::Again(opt_ident) => ExprKind::Again(opt_ident.map(|label|
                 respan(folder.new_span(label.span),

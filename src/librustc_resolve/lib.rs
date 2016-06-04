@@ -3142,7 +3142,7 @@ impl<'a> Resolver<'a> {
                 })
             }
 
-            ExprKind::Break(Some(label)) | ExprKind::Again(Some(label)) => {
+            ExprKind::Break(Some(label), _) | ExprKind::Again(Some(label)) => {
                 match self.search_label(mtwt::resolve(label.node)) {
                     None => {
                         self.record_def(expr.id, err_path_resolution());

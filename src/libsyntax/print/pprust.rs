@@ -2161,12 +2161,16 @@ impl<'a> State<'a> {
             ast::ExprKind::Path(Some(ref qself), ref path) => {
                 self.print_qpath(path, qself, true)?
             }
-            ast::ExprKind::Break(opt_ident) => {
+            ast::ExprKind::Break(opt_ident, ref opt_expr) => {
                 word(&mut self.s, "break")?;
                 space(&mut self.s)?;
                 if let Some(ident) = opt_ident {
                     self.print_ident(ident.node)?;
                     space(&mut self.s)?;
+                    if let Some(ref expr) = *opt_expr {
+                        self.print_expr(&expr)?;
+                        space(&mut self.s)?;
+                    }
                 }
             }
             ast::ExprKind::Again(opt_ident) => {
