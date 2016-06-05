@@ -2321,24 +2321,12 @@ impl<'a> Parser<'a> {
                             span: self.span
                         });
                         self.bump();
-                        
-                        // from here, we may possibly be looking
-                        // at the start of an expression, like this:
-                        //   break 'a, 42;
-                        let yield_expr = if self.token.can_begin_expr() {
-                            println!("beginning an expression after break");
-                            Some(self.parse_expr()?)
-                        } else {
-                            None
-                        };
-                        
-                        ex = ExprKind::Break(lifetime, yield_expr);
+                        ex = ExprKind::Break(lifetime, None);
                     } else {
                         // a break with no lifetime can still have an expression attached
                         // to it:
                         //    break 42;
                         let yield_expr = if self.token.can_begin_expr() {
-                            println!("beginning an expression after break, no lifetime");
                             Some(self.parse_expr()?)
                         } else {
                             None

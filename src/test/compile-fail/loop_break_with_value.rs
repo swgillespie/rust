@@ -10,13 +10,10 @@
 
 pub fn main() {
     let x = loop {
-        break 42;
+        if true {
+            break 99;
+        } else {
+            break false; //~ ERROR mismatched types
+        }
     };
-    
-    let y = loop {
-        break;
-    };
-    
-    assert_eq!(Some(42), x);
-    assert_eq!(None, y);
 }

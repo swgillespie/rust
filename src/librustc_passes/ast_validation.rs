@@ -73,8 +73,11 @@ impl<'a, 'v> Visitor<'v> for AstValidator<'a> {
         match expr.node {
             ExprKind::While(_, _, Some(ident)) | ExprKind::Loop(_, Some(ident)) |
             ExprKind::WhileLet(_, _, _, Some(ident)) | ExprKind::ForLoop(_, _, _, Some(ident)) |
-            ExprKind::Break(Some(ident), _) | ExprKind::Again(Some(ident)) => {
+            ExprKind::Break(Some(ident), None) | ExprKind::Again(Some(ident)) => {
                 self.check_label(ident.node, ident.span, expr.id);
+            }
+            ExprKind::Break(Some(_), Some(_)) => {
+                self.err_handler().span_bug(expr.span, "break can't have both a label and expression");
             }
             _ => {}
         }

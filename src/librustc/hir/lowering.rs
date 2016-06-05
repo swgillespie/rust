@@ -1334,7 +1334,15 @@ impl<'a> LoweringContext<'a> {
                     // 
                     let (name, id) = self.loop_expanded_named_gensym.unwrap();
                     let assign_target = self.expr_ident(e.span, name, None, id);
-                    let assign_expr = self.lower_expr(expr);
+                    let some = {
+                        let strs = self.std_path(&["option", "Option", "Some"]);
+                        let path = self.path_global(e.span, strs);
+                        self.expr_path(path, None)
+                    };
+                    let assign_expr = {
+                        let expr = self.lower_expr(expr);
+                        self.expr_call(e.span, some, hir_vec![expr], None)
+                    };
                     let assign = {
                         let expr = P(hir::Expr {
                             id: self.next_id(),
@@ -1357,6 +1365,7 @@ impl<'a> LoweringContext<'a> {
                     });
                     
                     let block = self.block_all(e.span, hir_vec![assign], Some(actual_break));
+                    self.loop_expanded_named_break = true;
                     return self.expr_block(block, e.attrs.clone());
                 },
                 ExprKind::Break(_, _) => {
