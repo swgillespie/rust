@@ -805,6 +805,8 @@ options! {CodegenOptions, CodegenSetter, basic_codegen_options,
         "set the inlining threshold for"),
     panic: Option<PanicStrategy> = (None, parse_panic_strategy,
         [TRACKED], "panic strategy to compile crate with"),
+    split_stacks: bool = (false, parse_bool, [TRACKED],
+        "enable split stacks"),
 }
 
 options! {DebuggingOptions, DebuggingSetter, basic_debugging_options,

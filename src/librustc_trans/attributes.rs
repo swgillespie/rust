@@ -76,17 +76,27 @@ pub fn from_fn_attrs(ccx: &CrateContext, attrs: &[ast::Attribute], llfn: ValueRe
     inline(llfn, find_inline_attr(Some(ccx.sess().diagnostic()), attrs));
 
     set_frame_pointer_elimination(ccx, llfn);
-
+    let mut should_have_split_stack = ccx.tcx().sess.opts.cg.split_stacks;
     for attr in attrs {
         if attr.check_name("cold") {
             Attribute::Cold.apply_llfn(Function, llfn);
         } else if attr.check_name("naked") {
             naked(llfn, true);
+        } else if attr.check_name("no_split_stack") {
+            should_have_split_stack = false;
         } else if attr.check_name("allocator") {
             Attribute::NoAlias.apply_llfn(
                 llvm::AttributePlace::ReturnValue(), llfn);
         } else if attr.check_name("unwind") {
             unwind(llfn, true);
         }
+    }
+
+    if should_have_split_stack {
+        llvm::AddFunctionAttrStringValue(
+            llfn,
+            llvm::AttributePlace::Function,
+            "split-stack\0",
+            "true\0");
     }
 }

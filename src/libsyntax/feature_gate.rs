@@ -228,6 +228,9 @@ declare_features! (
     // allow the use of `#[naked]` on functions.
     (active, naked_functions, "1.9.0", Some(32408)),
 
+    // allow the use of `#[no_split_stack] on functions.
+    (active, no_split_stack, "1.12.0", None),
+
     // allow `#[no_debug]`
     (active, no_debug, "1.5.0", Some(29721)),
 
@@ -594,6 +597,10 @@ pub const KNOWN_ATTRIBUTES: &'static [(&'static str, AttributeType, AttributeGat
                                  "the `#[naked]` attribute \
                                   is an experimental feature",
                                  cfg_fn!(naked_functions))),
+    ("no_split_stack", Whitelisted, Gated("no_split_stack",
+                                          "the #[no_split_stack] attribute \
+                                           is an experimental feature",
+                                           cfg_fn!(no_split_stack))),
     ("export_name", Whitelisted, Ungated),
     ("inline", Whitelisted, Ungated),
     ("link", Whitelisted, Ungated),
